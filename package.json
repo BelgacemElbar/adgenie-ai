@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",
-    "formidable": "^3.6.0",
+    "formidable": "^3.5.4",
     "fluent-ffmpeg": "^2.1.2",
     "next": "13.5.2",
     "openai": "^4.2.1",
