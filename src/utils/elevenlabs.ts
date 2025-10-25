@@ -1,9 +1,9 @@
 import fs from "fs";
-import path from "path";
 import fetch from "node-fetch";
+import { createTempFilePath } from "./tempFiles";
 
 export async function generateVoiceover(text: string): Promise<string> {
-  const outputPath = path.join(process.cwd(), `public/voice-${Date.now()}.mp3`);
+  const outputPath = createTempFilePath("voice", "mp3");
 
   const response = await fetch("https://api.elevenlabs.io/v1/text-to-speech/voice-id", {
     method: "POST",
@@ -18,8 +18,12 @@ export async function generateVoiceover(text: string): Promise<string> {
     })
   });
 
+  if (!response.ok) {
+    throw new Error(`Failed to generate voiceover: ${response.status} ${response.statusText}`);
+  }
+
   const arrayBuffer = await response.arrayBuffer();
-  fs.writeFileSync(outputPath, Buffer.from(arrayBuffer));
+  await fs.promises.writeFile(outputPath, Buffer.from(arrayBuffer));
 
   return outputPath;
 }

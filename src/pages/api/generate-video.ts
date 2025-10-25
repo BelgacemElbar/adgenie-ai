@@ -1,6 +1,7 @@
-import { IncomingForm } from "formidable";
+import type { NextApiRequest, NextApiResponse } from "next";
+import { IncomingForm, type Fields, type Files, type File } from "formidable";
 import fs from "fs";
-import path from "path";
+import os from "os";
 import { generateScript } from "../../utils/gpt4";
 import { generateVoiceover } from "../../utils/elevenlabs";
 import { generateCaptions } from "../../utils/whisper";
@@ -8,43 +9,75 @@ import { fetchStockClips } from "../../utils/stockClips";
 import { stitchVideo } from "../../utils/ffmpegStitch";
 import { createClient } from "@supabase/supabase-js";
 
-export const config = { api: { bodyParser: false } };
+export const config = {
+  api: { bodyParser: false },
+  runtime: "nodejs"
+};
+
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!);
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+type ParsedForm = { fields: Fields; files: Files };
 
-  const form = new IncomingForm({ multiples: false });
-  form.parse(req, async (err, fields, files) => {
-    if (err) return res.status(500).json({ error: err.message });
+function parseForm(req: NextApiRequest): Promise<ParsedForm> {
+  const form = new IncomingForm({ multiples: false, keepExtensions: true, uploadDir: os.tmpdir() });
 
-    try {
-      const textInput = fields.textInput as string;
-      const bgColor = (fields.bgColor as string) || "#000000";
-      let logoPath: string | undefined;
-
-      if (files.logo) {
-        const file = files.logo[0] || files.logo;
-        const tempPath = file.filepath || file.path;
-        logoPath = path.join(process.cwd(), `public/${file.originalFilename}`);
-        fs.copyFileSync(tempPath, logoPath);
+  return new Promise((resolve, reject) => {
+    form.parse(req, (err, fields, files) => {
+      if (err) {
+        reject(err);
+        return;
       }
 
-      const script = await generateScript(textInput);
-      const voicePath = await generateVoiceover(script);
-      const captionsPath = await generateCaptions(script);
-      const clips = await fetchStockClips(script);
-      const finalVideoPath = await stitchVideo(clips, voicePath, captionsPath, logoPath, bgColor);
-
-      const fileBuffer = fs.readFileSync(finalVideoPath);
-      const { data, error } = await supabase.storage.from("videos").upload(`video-${Date.now()}.mp4`, fileBuffer);
-      if (error) throw error;
-      const publicURL = supabase.storage.from("videos").getPublicUrl(data.path).data.publicUrl;
-
-      res.status(200).json({ url: publicURL });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: "Video generation failed" });
-    }
+      resolve({ fields, files });
+    });
   });
+}
+
+function getFilePath(file?: File | File[]): string | undefined {
+  if (!file) return undefined;
+  const candidate = Array.isArray(file) ? file[0] : file;
+  return (candidate.filepath || (candidate as any).path) as string | undefined;
+}
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  try {
+    const { fields, files } = await parseForm(req);
+    const textInput = (fields.textInput as string) || "";
+
+    if (!textInput.trim()) {
+      return res.status(400).json({ error: "textInput is required" });
+    }
+
+    const bgColor = (fields.bgColor as string) || "#000000";
+    const logoPath = getFilePath(files.logo as File | File[] | undefined);
+
+    const script = await generateScript(textInput);
+    const voicePath = await generateVoiceover(script);
+    const captionsPath = await generateCaptions(script);
+    const clips = await fetchStockClips(script);
+    const finalVideoPath = await stitchVideo(clips, voicePath, captionsPath, logoPath, bgColor);
+
+    const fileBuffer = await fs.promises.readFile(finalVideoPath);
+    const { data, error } = await supabase.storage
+      .from("videos")
+      .upload(`video-${Date.now()}.mp4`, fileBuffer, { contentType: "video/mp4" });
+
+    if (error) {
+      throw error;
+    }
+
+    const publicURL = supabase.storage.from("videos").getPublicUrl(data.path).data.publicUrl;
+    res.status(200).json({ url: publicURL });
+
+    const cleanupTargets = [voicePath, captionsPath, finalVideoPath, logoPath].filter(Boolean) as string[];
+    await Promise.allSettled(cleanupTargets.map((target) => fs.promises.unlink(target)));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Video generation failed" });
+  }
 }
