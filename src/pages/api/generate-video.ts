@@ -1,11 +1,11 @@
 import { IncomingForm } from "formidable";
 import fs from "fs";
 import path from "path";
-import { generateScript } from "@/utils/gpt4";
-import { generateVoiceover } from "@/utils/elevenlabs";
-import { generateCaptions } from "@/utils/whisper";
-import { fetchStockClips } from "@/utils/stockClips";
-import { stitchVideo } from "@/utils/ffmpegStitch";
+import { generateScript } from "../../utils/gpt4";
+import { generateVoiceover } from "../../utils/elevenlabs";
+import { generateCaptions } from "../../utils/whisper";
+import { fetchStockClips } from "../../utils/stockClips";
+import { stitchVideo } from "../../utils/ffmpegStitch";
 import { createClient } from "@supabase/supabase-js";
 
 export const config = { api: { bodyParser: false } };
