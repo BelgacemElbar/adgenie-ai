@@ -1,6 +1,8 @@
 import ffmpeg from "fluent-ffmpeg";
-import fs from "fs";
-import path from "path";
+import { createTempFilePath } from "./tempFiles";
+
+const ffmpegInstaller = require("@ffmpeg-installer/ffmpeg");
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 export async function stitchVideo(
   clips: string[],
@@ -10,32 +12,27 @@ export async function stitchVideo(
   bgColor: string = "#000000"
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const outputPath = path.join(process.cwd(), `public/final-${Date.now()}.mp4`);
+    const outputPath = createTempFilePath("final", "mp4");
 
-    // Start FFmpeg command
     let command = ffmpeg();
 
-    // Add clips as inputs
     clips.forEach((clip) => {
       command = command.input(clip);
     });
 
-    // Add voiceover
     command = command.input(voicePath);
 
-    // Video filter options
-    let vfFilters = [
+    const vfFilters = [
       `scale=720:1280:force_original_aspect_ratio=decrease`,
       `pad=720:1280:(ow-iw)/2:(oh-ih)/2:${bgColor}`
     ];
 
-    // Add captions if provided
     if (captionsPath) {
       vfFilters.push(`subtitles='${captionsPath.replace(/\\/g, "/")}'`);
     }
 
-    // Add logo overlay if provided
     if (logoPath) {
+      command = command.input(logoPath);
       vfFilters.push(`overlay=W-w-10:H-h-10`);
     }
 

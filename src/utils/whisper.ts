@@ -1,15 +1,23 @@
-import OpenAI from "openai";
 import fs from "fs";
-import path from "path";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import { createTempFilePath } from "./tempFiles";
 
 export async function generateCaptions(text: string): Promise<string> {
-  const outputPath = path.join(process.cwd(), `public/captions-${Date.now()}.srt`);
+  const outputPath = createTempFilePath("captions", "srt");
+  const sentences = text.split(/\.\s+/).filter(Boolean);
 
-  // Whisper can generate from audio too; for simplicity we convert text to captions directly
-  const captions = text.split(". ").map((line, i) => `${i+1}\n00:00:${i*3 < 10 ? '0'+i*3 : i*3},000 --> 00:00:${(i+1)*3 < 10 ? '0'+(i+1)*3 : (i+1)*3},000\n${line}\n`).join("\n");
+  const captions = sentences
+    .map((line, index) => {
+      const startSeconds = index * 3;
+      const endSeconds = (index + 1) * 3;
+      const formatTime = (seconds: number) => {
+        const padded = seconds.toString().padStart(2, "0");
+        return `00:00:${padded},000`;
+      };
 
-  fs.writeFileSync(outputPath, captions);
+      return `${index + 1}\n${formatTime(startSeconds)} --> ${formatTime(endSeconds)}\n${line}\n`;
+    })
+    .join("\n");
+
+  await fs.promises.writeFile(outputPath, captions);
   return outputPath;
 }

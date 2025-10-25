@@ -1,0 +1,10 @@
+{
+  "framework": "nextjs",
+  "functions": {
+    "api/generate-video.ts": {
+      "runtime": "nodejs18.x",
+      "memory": 2048,
+      "maxDuration": 300
+    }
+  }
+}
